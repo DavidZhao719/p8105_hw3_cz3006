@@ -248,3 +248,134 @@ ggplot(activity_by_minute,
 ```
 
 The three educational groups show similar activity patterns over the 24-hour period. Over the course of the day, activity levels decrease in the evening. On average, women are more physically active during the day than men. Women also show greater night time activity than men, especially between 11 PM and 1 AM. Activity levels among the group with less than a high school education show a morning peak, while activity among the group with more than a high school education display more evened out activity levels during the day.
+
+# Problem 3
+```{r load-citi}
+citi_jan_2020 = read_csv("data/Jan 2020 Citi.csv")
+citi_jan_2024 = read_csv("data/Jan 2024 Citi.csv")
+citi_july_2020 = read_csv("data/July 2020 Citi.csv")
+citi_july_2024 = read_csv("data/July 2024 Citi.csv")
+
+dim(citi_jan_2020)
+dim(citi_jan_2024)
+dim(citi_july_2020)
+dim(citi_july_2024)
+
+glimpse(citi_jan_2020)
+glimpse(citi_jan_2024)
+```
+```{r merge-citi}
+citi_data = bind_rows(
+  citi_jan_2020 |> mutate(year = 2020, month = "January"),
+  citi_jan_2024 |> mutate(year = 2024, month = "January"),
+  citi_july_2020 |> mutate(year = 2020, month = "July"),
+  citi_july_2024 |> mutate(year = 2024, month = "July")
+)
+
+dim(citi_data)
+glimpse(citi_data)
+```
+```{r clean-citi}
+citi_clean = citi_data |>
+  mutate(
+    year = factor(year, levels = c(2020, 2024)),
+    month = factor(month, levels = c("January", "July")),
+    weekdays = factor(
+      weekdays,
+      levels = c("Monday", "Tuesday", "Wednesday",
+                 "Thursday", "Friday", "Saturday", "Sunday")
+    ),
+    member_casual = factor(
+      member_casual,
+      levels = c("casual", "member"),
+      labels = c("Casual", "Member")
+    ),
+    rideable_type = factor(rideable_type)
+  )
+
+glimpse(citi_clean)
+summary(citi_clean$duration)
+```
+The cleaned Citi Bike dataset contains 99,485 rides, 9 variables and contains 2020, 2021, 2022 and 2024 rides. Variables are: ride ID, bike type, day of the week, ride duration, starting station, ending station, membership status, year, month. The average duration of a ride is 13.93 minutes, the median is 9.84 minutes. Variables, membership status, weekday, year, bike type and month, were transformed to factors for further analysis.
+
+```{r citi-ride-counts}
+ride_counts = citi_clean |>
+  count(year, month, member_casual) |>
+  pivot_wider(
+    names_from = member_casual,
+    values_from = n,
+    values_fill = 0
+  )
+
+knitr::kable(
+  ride_counts,
+  caption = "Number of Citi Bike Rides by Year, Month, and Membership Status"
+)
+```
+Citi Bike members made up the vast majority of rides in all four months. July saw more rides both years than January, showing that more rides occur during the summer months. More rides occurred in 2020 than 2024. July 2024 saw the most rides of all months, with members taking 36,262 rides, and casual users taking 10,894 rides. Given that only a subset of rides was captured, it shows that Citi Bike usage has been increasing and will likely continue to rise.
+
+```{r popular-stations}
+popular_stations = citi_clean |>
+  filter(year == "2024", month == "July") |>
+  count(start_station_name, sort = TRUE) |>
+  slice_head(n = 5) |>
+  rename(
+    `Starting Station` = start_station_name,
+    `Number of Rides` = n
+  )
+
+knitr::kable(
+  popular_stations,
+  caption = "Top 5 Most Popular Starting Stations in July 2024"
+)
+```
+In July 2024, 163 trips started from Pier 61 at Chelsea Piers. The next most popular station, University Pl & E 14 St, had 155 trips. W 21 St & 6 Ave was the third most popular station with 152 trips. The other stations in the top five had similar numbers of trips with counts from 146 to 163.
+
+```{r median-ride-duration}
+median_duration = citi_clean |>
+  group_by(year, month, weekdays) |>
+  summarize(
+    median_duration = median(duration, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+ggplot(
+  median_duration,
+  aes(x = weekdays, y = median_duration, color = month, group = month)
+) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  facet_wrap(~ year) +
+  labs(
+    title = "Median Ride Duration by Weekday, Month, and Year",
+    x = "Day of the Week",
+    y = "Median Ride Duration (minutes)",
+    color = "Month"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+```
+The plot shows that the median ride duration was longer in July than in January in both years. Ride durations were also longer in 2020 than in 2024 for both months. Ride durations in July were also longer in 2020 than in 2024. Of all the months, ride durations in July 2020 were the longest. July 2020 also shows the highest median durations on weekends with Saturday and Sunday having the longest median durations. This could indicate seasonal variations and recreational use of the service.
+```{r bike-type-duration}
+citi_2024 = citi_clean |>
+  filter(year == "2024")
+
+ggplot(
+  citi_2024,
+  aes(x = member_casual, y = duration, fill = rideable_type)
+) +
+  geom_boxplot(outlier.alpha = 0.15) +
+  facet_wrap(~ month) +
+  coord_cartesian(ylim = c(0, 60)) +
+  labs(
+    title = "Ride Duration by Month, Membership, and Bike Type in 2024",
+    x = "Membership Status",
+    y = "Ride Duration (minutes)",
+    fill = "Bike Type"
+  ) +
+  theme_minimal()
+```
+
+The boxplots show that, in January and July 2024, casual riders clocked longer ride times than Citi Bike members. Ride times in July are longer than in January, especially for casual riders. For casual riders, classic bikes tend to have longer median ride times than electric bikes. For members, it’s the other way around. All groups, once again, show right-skewed distributions, meaning there are long-duration outliers. These results indicate that membership status, bike type, and season are associated with differences in ride duration.
