@@ -9,3 +9,117 @@ output: github_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+##Problem 1
+```{r load-noaa}
+library(tidyverse)
+library(p8105.datasets)
+
+data("ny_noaa")
+
+dim(ny_noaa)
+glimpse(ny_noaa)
+```
+```{r missing-data}
+ny_noaa |>
+  summarize(
+    across(everything(), ~ sum(is.na(.)))
+  )
+
+ny_noaa |>
+  summarize(
+    across(everything(), ~ round(mean(is.na(.)) * 100, 2))
+  )
+```
+The NY NOAA data set has 2,595,176 observations and 7 variables. The variables are station ID, date, precipitation, snowfall, snow depth, maximum temperature, and minimum temperature. Missing data are an important issue in this data set. Both maximum and minimum temperatures are missing 43.71% of the time. Snow depth is missing 22.80% of the time. Snowfall is missing 14.69% of the time and precipitation is missing 5.62% of the time. The variables station ID and date do not contain any missing data.
+
+##Data Cleaning
+```{r clean-noaa}
+noaa_clean = ny_noaa |>
+  mutate(
+    year = lubridate::year(date),
+    month = lubridate::month(date),
+    day = lubridate::day(date),
+    tmax = as.numeric(tmax) / 10,
+    tmin = as.numeric(tmin) / 10,
+    prcp = prcp / 10
+  )
+
+glimpse(noaa_clean)
+```
+```{r snowfall-summary}
+noaa_clean |>
+  count(snow, sort = TRUE) |>
+  print(n = 10)
+```
+The most frequent snowfall value is 0 mm because most days have no snowfall. There are many missing observations. Among positive snowfall values, 25 mm, 13 mm, 51 mm, and 76 mm are common. Values of 1, 0.5, 2 and 3 inches correspond to these, respectively. This suggests that snowfall was previously measured in inches and then converted to mm.
+
+## Average Maximum Temperature in January and July
+```{r january-july-temp, fig.width=10, fig.height=5}
+jan_jul = noaa_clean |>
+  filter(month %in% c(1, 7)) |>
+  group_by(id, year, month) |>
+  summarize(
+    mean_tmax = mean(tmax, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  filter(!is.nan(mean_tmax)) |>
+  mutate(
+    month = factor(
+      month,
+      levels = c(1, 7),
+      labels = c("January", "July")
+    )
+  )
+
+ggplot(jan_jul, aes(x = year, y = mean_tmax)) +
+  geom_point(alpha = 0.3, size = 0.6) +
+  facet_wrap(~ month) +
+  labs(
+    x = "Year",
+    y = "Average maximum temperature (°C)"
+  ) +
+  theme_minimal()
+```
+The difference between January and July is very clear. From the plots it shows January max temperatures are between -5°C and +5°C with considerable variation. July temperatures range from 25°C to 30°C. In January 1982 there was an outlier as it was unusually cold for the month. July 1988 also has an outlier as it was relatively cool for the month.
+
+## Temperature and Snowfall
+```{r temperature-snowfall, fig.width=12, fig.height=8}
+library(ggridges)
+library(patchwork)
+
+snow_plot = noaa_clean |>
+  filter(!is.na(snow), snow > 0, snow < 100) |>
+  mutate(year = factor(year)) |>
+  ggplot(aes(x = snow, y = year)) +
+  geom_density_ridges(
+    scale = 1,
+    fill = "gray80",
+    color = "gray40",
+    bandwidth = 3.76
+  ) +
+  labs(
+    title = "Snowfall Distribution by Year",
+    x = "Snowfall (mm)",
+    y = "Year"
+  ) +
+  theme_minimal()
+
+temp_plot = noaa_clean |>
+  filter(!is.na(tmax), !is.na(tmin)) |>
+  ggplot(aes(x = tmin, y = tmax)) +
+  geom_hex(bins = 40) +
+  labs(
+    title = "Maximum vs Minimum Temperature",
+    x = "Minimum Temperature (°C)",
+    y = "Maximum Temperature (°C)",
+    fill = "Count"
+  ) +
+  theme_minimal()
+
+snow_plot + temp_plot
+```
+Snowfall distributions tend to be similar from year to year. Smaller snowfall amounts tend to occur more frequently and larger snowfall amounts tend to occur less frequently. There appear to be multiple peaks in the distributions, possibly due to the fact that originally snowfall amounts were measured in inches and then converted to the metric system.
+
+The hexbin plot of minimum and maximum temperatures shows a positive correlation. Most of the data is in the mid range of temperatures, and extreme high and low temperatures may be outliers or represent data quality issues.
+
+
